@@ -136,7 +136,7 @@ This provides a centralized email notification destination for CloudWatch alarms
 
 **Screenshots:**
 
-![GuardDuty detector status](screenshots/02-guardduty/guardduty-detector-status.png)
+![GuardDuty detector status](screenshots/02-guardduty/guardduty-detection-status.png)
 
 ![GuardDuty sample finding details](screenshots/02-guardduty/sample-finding-details.png)
 
