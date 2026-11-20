@@ -169,7 +169,14 @@ Created three CloudWatch metric filters under the custom namespace `ThreatDetect
 
 **Metric Filters Configuration:**
 
-![All three CloudWatch metric filters](screenshots/04-metric-filters-alarms/metric-filters.png)
+Console Login Failures:
+![Console Login Faiures](screenshots/04-metric-filters-alarms/console-login-failures.png)
+
+IAM Policy Changes:
+![IAM Policy Changes](screenshots/04-metric-filters-alarms/iam-policy-changes.png)
+
+Unauthorized API Calls:
+![Unauthorized API Calls](screenshots/04-metric-filters-alarms/unauthorized-api-calls.png)
 
 Configured corresponding CloudWatch alarms:
 
