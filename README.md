@@ -13,7 +13,7 @@ The project was implemented using the AWS Management Console and AWS CLI through
 - Enable AWS CloudTrail to record AWS account activity.
 - Configure Amazon GuardDuty to detect potential security threats.
 - Integrate CloudTrail with Amazon CloudWatch Logs.
-- Create CloudWatch metric filters to identify suspicious account activity.
+- Create CloudWatch metric filters to identify specific security-related events.
 - Configure CloudWatch alarms for security-related events.
 - Set up Amazon SNS for automated email notifications.
 - Configure Amazon EventBridge to forward GuardDuty findings to SNS.
@@ -33,52 +33,76 @@ The project was implemented using the AWS Management Console and AWS CLI through
 | Amazon SNS | Delivers automated security notifications through email |
 | AWS IAM | Manages permissions and service access |
 
-## Architecture Diagram
+## Network Architecture
 
-The solution consists of two security monitoring and alerting workflows.
+The solution consists of two independent security monitoring workflows that converge on a central Amazon SNS topic for email notifications.
 
-### 1. CloudTrail and CloudWatch Monitoring
-
-CloudTrail records AWS management events and delivers them to CloudWatch Logs. Metric filters identify specific security-related activities, while CloudWatch alarms monitor the resulting metrics and publish notifications to SNS.
-
-### 2. GuardDuty Threat Detection
-
-GuardDuty generates security findings when suspicious activity is detected. EventBridge captures these findings and forwards them to the SNS topic for email notification.
+### Architecture Diagram
 
 ```mermaid
 flowchart TB
-    subgraph A["CloudTrail Monitoring"]
-        CT["AWS CloudTrail"]
+    subgraph W1["Workflow 1: AWS Account Activity Monitoring"]
+        CT["AWS CloudTrail<br/>Multi-Region Trail"]
         S3[("Amazon S3<br/>CloudTrail Log Storage")]
-        CWL["Amazon CloudWatch Logs"]
-        MF["CloudWatch Metric Filters"]
-        AL["CloudWatch Alarms"]
+        CWL["Amazon CloudWatch Logs<br/>/aws/cloudtrail/threat-detection"]
+        MF["CloudWatch Metric Filters<br/>ConsoleLoginFailures<br/>UnauthorizedApiCalls<br/>IamPolicyChanges"]
+        AL["CloudWatch Alarms<br/>3 Security Alarms"]
 
-        CT --> S3
-        CT --> CWL
+        CT -->|"Log files"| S3
+        CT -->|"Management events"| CWL
         CWL --> MF
-        MF --> AL
+        MF -->|"Metric data"| AL
     end
 
-    subgraph B["GuardDuty Threat Detection"]
-        GD["Amazon GuardDuty"]
+    subgraph W2["Workflow 2: GuardDuty Threat Detection"]
+        GD["Amazon GuardDuty<br/>Threat Detection"]
         EB["Amazon EventBridge<br/>GuardDutyFindingsRule"]
 
-        GD --> EB
+        GD -->|"GuardDuty Finding"| EB
     end
 
-    AL --> SNS["Amazon SNS<br/>ThreatDetectionAlerts"]
-    EB --> SNS
-    SNS --> EMAIL["Email Notifications"]
+    subgraph W3["Centralized Alerting"]
+        SNS["Amazon SNS<br/>ThreatDetectionAlerts"]
+        EMAIL["Email Notifications"]
+    end
 
-    classDef aws fill:#EAF3FF,stroke:#2874A6,color:#12344D
+    AL -->|"Alarm actions"| SNS
+    EB -->|"Event target"| SNS
+    SNS -->|"Email subscription"| EMAIL
+
+    classDef monitoring fill:#EAF3FF,stroke:#2874A6,color:#12344D
     classDef alert fill:#FFF0D9,stroke:#C47A16,color:#593600
     classDef storage fill:#E9F7EF,stroke:#29945B,color:#174A2E
 
-    class CT,CWL,MF,GD,EB aws
+    class CT,CWL,MF,GD,EB monitoring
     class AL,SNS,EMAIL alert
     class S3 storage
 ```
+
+### Workflow 1 – CloudTrail and CloudWatch Monitoring
+
+1. AWS CloudTrail records AWS account management events.
+2. CloudTrail delivers log files to Amazon S3 and management event records to CloudWatch Logs.
+3. CloudWatch Logs stores the CloudTrail events.
+4. Metric filters identify failed console logins, unauthorized API calls, and IAM policy changes.
+5. CloudWatch alarms monitor the resulting metric data.
+6. When an alarm threshold is breached, CloudWatch publishes a notification to the SNS topic.
+7. Amazon SNS delivers the alert through email.
+
+### Workflow 2 – GuardDuty Threat Detection
+
+1. Amazon GuardDuty analyzes supported AWS data sources and generates security findings.
+2. Amazon EventBridge captures findings matching the configured event pattern.
+3. EventBridge forwards matching findings to the SNS topic.
+4. Amazon SNS delivers the GuardDuty finding notification through email.
+
+### Centralized Alerting
+
+Both workflows use the same SNS topic:
+
+`ThreatDetectionAlerts`
+
+This provides a centralized email notification destination for CloudWatch alarms and GuardDuty findings.
 
 ## Implementation Details
 
@@ -92,9 +116,16 @@ flowchart TB
 - Verified that CloudTrail was actively logging and delivering events.
 
 **Resources:**
+
 - Trail: `aws-threat-detection-trail`
 - S3 Bucket: `bryan-cloudtrail-logs-2026`
 - CloudWatch Log Group: `/aws/cloudtrail/threat-detection`
+
+**Screenshots:**
+
+![CloudTrail trail configuration](screenshots/01-cloudtrail/cloudtrail-trail-configuration.png)
+
+![CloudTrail logging status](screenshots/01-cloudtrail/cloudtrail-logging-status.png)
 
 ### Exercise 2 – Enable Amazon GuardDuty
 
@@ -103,12 +134,28 @@ flowchart TB
 - Retrieved and reviewed GuardDuty findings.
 - Verified that GuardDuty was generating security findings successfully.
 
+**Screenshots:**
+
+![GuardDuty detector status](screenshots/02-guardduty/guardduty-detector-status.png)
+
+![GuardDuty sample finding details](screenshots/02-guardduty/sample-finding-details.png)
+
+> **Note:** The sample finding shown in the screenshot is simulated and was generated for testing purposes. It does not represent an actual security incident.
+
 ### Exercise 3 – Configure Amazon CloudWatch Logs
 
 - Integrated CloudTrail with the CloudWatch Logs service.
 - Verified the existence of the CloudTrail log group and log streams.
 - Retrieved CloudTrail events using CloudWatch Logs.
 - Confirmed that AWS management events were successfully delivered to CloudWatch Logs.
+
+**Screenshots:**
+
+![CloudWatch log group](screenshots/03-cloudwatch-logs/cloudwatch-log-group.png)
+
+![CloudWatch log streams](screenshots/03-cloudwatch-logs/cloudwatch-log-streams.png)
+
+![Retrieved CloudTrail log events](screenshots/03-cloudwatch-logs/cloudtrail-log-events.png)
 
 ### Exercise 4 – Configure CloudWatch Metric Filters and Alarms
 
@@ -120,6 +167,10 @@ Created three CloudWatch metric filters under the custom namespace `ThreatDetect
 | `UnauthorizedApiCalls` | Detects unauthorized or access-denied API requests |
 | `IamPolicyChanges` | Detects IAM policy creation, modification, attachment, and deletion activities |
 
+**Metric Filters Configuration:**
+
+![All three CloudWatch metric filters](screenshots/04-metric-filters-alarms/metric-filters.png)
+
 Configured corresponding CloudWatch alarms:
 
 | Alarm Name | Metric | Evaluation Threshold |
@@ -129,10 +180,21 @@ Configured corresponding CloudWatch alarms:
 | `Alarm-IamPolicyChanges` | IamPolicyChanges | Greater than or equal to 1 |
 
 **Alarm Configuration:**
+
 - Statistic: Sum
 - Period: 300 seconds (5 minutes)
 - Evaluation Periods: 1
 - Missing Data Treatment: Not Breaching
+
+**CloudWatch Alarms:**
+
+![CloudWatch alarms overview](screenshots/04-metric-filters-alarms/cloudwatch-alarms.png)
+
+**SNS Alarm Actions:**
+
+All three CloudWatch alarms were configured to publish notifications to the `ThreatDetectionAlerts` SNS topic.
+
+![CloudWatch alarm actions showing SNS topic ARN](screenshots/04-metric-filters-alarms/alarm-actions.png)
 
 ### Exercise 5 – Configure Amazon SNS Email Notifications
 
@@ -145,6 +207,14 @@ Configured corresponding CloudWatch alarms:
 **SNS Topic:** `ThreatDetectionAlerts`
 
 **Result:** Successfully received the SNS test notification.
+
+**Screenshots:**
+
+![SNS topic configuration](screenshots/05-sns/sns-topic-configuration.png)
+
+![Confirmed SNS email subscription](screenshots/05-sns/sns-email-subscription.png)
+
+![SNS test email notification](screenshots/05-sns/sns-test-notification.png)
 
 ### Exercise 6 – Configure Amazon EventBridge for GuardDuty
 
@@ -162,9 +232,17 @@ Configured corresponding CloudWatch alarms:
 - Configured the existing SNS topic `ThreatDetectionAlerts` as the EventBridge target.
 - Enabled the EventBridge rule.
 
+**Screenshots:**
+
+![EventBridge rule configuration](screenshots/06-eventbridge/eventbridge-rule.png)
+
+![EventBridge GuardDuty event pattern](screenshots/06-eventbridge/eventbridge-event-pattern.png)
+
+![EventBridge SNS target configuration](screenshots/06-eventbridge/eventbridge-sns-target.png)
+
 ### Exercise 7 – Security Testing and Validation
 
-Performed validation to confirm that the monitoring and alerting workflows were functioning.
+Performed validation to confirm that both monitoring and alerting workflows were functioning.
 
 **Test 1: SNS Email Notification**
 
@@ -186,6 +264,14 @@ Performed validation to confirm that the monitoring and alerting workflows were 
 
 **Validation Result:** Both the GuardDuty EventBridge notification workflow and CloudWatch alarm notification workflow successfully delivered email notifications.
 
+**Screenshots:**
+
+![GuardDuty sample finding](screenshots/07-validation/guardduty-sample-finding.png)
+
+![GuardDuty email notification](screenshots/07-validation/guardduty-email-notification.png)
+
+![CloudWatch alarm email notification](screenshots/07-validation/cloudwatch-alarm-email.png)
+
 ## Security Monitoring Workflows
 
 **Workflow 1 – AWS Account Activity Monitoring**
@@ -195,44 +281,6 @@ AWS CloudTrail → CloudWatch Logs → Metric Filters → CloudWatch Alarms → 
 **Workflow 2 – GuardDuty Threat Detection**
 
 Amazon GuardDuty → Amazon EventBridge → Amazon SNS → Email Notification
-
-## Screenshots
-
-The following screenshots document the AWS configuration and successful validation results.
-
-### 1. CloudTrail Configuration
-- CloudTrail trail configuration.
-- Multi-region trail and management event settings.
-- CloudTrail logging status.
-
-### 2. GuardDuty Configuration
-- GuardDuty detector enabled.
-- GuardDuty sample findings.
-
-### 3. CloudWatch Logs
-- CloudWatch log group.
-- CloudTrail log streams.
-- Retrieved CloudTrail log events.
-
-### 4. CloudWatch Metric Filters and Alarms
-- Three configured metric filters.
-- Three CloudWatch alarms.
-- Alarm configuration and SNS actions.
-
-### 5. SNS Email Notifications
-- SNS topic configuration.
-- Confirmed email subscription.
-- Successful SNS test notification.
-
-### 6. EventBridge Configuration
-- EventBridge rule configuration.
-- GuardDuty event pattern.
-- SNS target configuration.
-
-### 7. Security Testing and Validation
-- GuardDuty sample finding.
-- GuardDuty email notification.
-- CloudWatch alarm notification.
 
 ## Key Learning Outcomes
 
